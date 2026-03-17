@@ -1,10 +1,29 @@
 import os
 import tempfile
 import hashlib
+import sys
+from pathlib import Path
 
 import streamlit as st
 
-from app import POPPLER_PATH, TESSERACT_CMD, extract_from_pdf
+# Hugging Face Spaces often runs the app from `/app/src/`.
+# Ensure the repo root is on sys.path so `app.py`, `extractor/`, `utils/` can be imported.
+_HERE = Path(__file__).resolve()
+for p in (_HERE.parent, _HERE.parent.parent):
+    sp = str(p)
+    if sp not in sys.path:
+        sys.path.insert(0, sp)
+
+try:
+    from app import POPPLER_PATH, TESSERACT_CMD, extract_from_pdf
+except ModuleNotFoundError:
+    st.error(
+        "Missing project files on the server.\n\n"
+        "This UI requires `app.py`, `extractor/`, and `utils/` to be present in the Space repository.\n"
+        "If you uploaded only `streamlit_app.py`, please upload the full project (or connect the GitHub repo) "
+        "and rebuild the Space."
+    )
+    st.stop()
 
 
 st.set_page_config(page_title="TextExtractor", page_icon="📄", layout="wide")
