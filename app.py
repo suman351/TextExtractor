@@ -24,15 +24,21 @@ def _pick_default_pdf() -> str | None:
 
 # You can override this by setting the PDF_PATH environment variable.
 PDF_PATH = os.environ.get("PDF_PATH") or _pick_default_pdf()
-POPPLER_PATH = os.environ.get(
-    "POPPLER_PATH",
-    r"C:\Users\suman\Downloads\Release-25.12.0-0\poppler-25.12.0\Library\bin",
+
+# Defaults:
+# - Windows: keep helpful defaults (override via env/UI if needed)
+# - Linux (e.g. Hugging Face Spaces): rely on system `pdftoppm` + `tesseract` on PATH
+_DEFAULT_POPPLER = (
+    r"C:\Users\suman\Downloads\Release-25.12.0-0\poppler-25.12.0\Library\bin"
+    if os.name == "nt"
+    else None
 )
-TESSERACT_CMD = os.environ.get(
-    "TESSERACT_CMD",
-    r"C:\Program Files\Tesseract-OCR\tesseract.exe",
-)
-pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD
+_DEFAULT_TESSERACT = r"C:\Program Files\Tesseract-OCR\tesseract.exe" if os.name == "nt" else None
+
+POPPLER_PATH = os.environ.get("POPPLER_PATH") or _DEFAULT_POPPLER
+TESSERACT_CMD = os.environ.get("TESSERACT_CMD") or _DEFAULT_TESSERACT
+if TESSERACT_CMD:
+    pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD
 
 
 @dataclass(frozen=True)

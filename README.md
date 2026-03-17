@@ -168,3 +168,19 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 - This tool is tuned for **UPSC Prelims-style MCQs** (stem + options (a)–(d), statement questions, mixed Hindi/English).
 - OCR quality depends heavily on scan quality (resolution, skew, blur). If results look poor, try higher DPI in the UI (e.g. 350–450).
 
+---
+
+### Free hosting (Hugging Face Spaces - Docker)
+
+This is the **most reliable free** way to host this OCR app because it includes Poppler + Tesseract + PaddleOCR.
+
+1. Push this repo to GitHub (public).
+2. On Hugging Face → Spaces → **Create new Space**
+3. Select **Docker** as the Space SDK.
+4. Connect your GitHub repo (or upload files).
+5. The Space will build from `Dockerfile` and run the Streamlit app on port **7860** automatically.
+
+Notes:
+- Free CPU can be slow for large PDFs.
+- The Docker image installs `poppler-utils` + `tesseract-ocr` (+ Hindi/English language packs) automatically.
+
