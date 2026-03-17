@@ -1,101 +1,117 @@
 ## TextExtractor – UPSC PDF Hindi/English Question OCR
 
-This project extracts **Hindi (and optionally English) MCQ questions** from a scanned UPSC‑style PDF and saves them as clean text files.
+Extract **Hindi + English UPSC-style MCQ questions** from a *scanned* PDF and save them as clean text files:
 
-Currently the main flow is:
-- Convert the input PDF in `uploads/` to images.
-- Run OCR on each page (Hindi on the left column, English on the right).
-- Group question stem + statements + options `(a)…(d)` into single blocks.
-- Save **only the Hindi questions** to `output/hindi_questions.txt`.
+- `output/hindi_questions.txt`
+- `output/english_questions.txt`
 
----
-
-### 1. Prerequisites
-
-- **Python**: 3.8+ installed and available as `python` / `py` on PATH.
-- **Tesseract OCR (Windows)**:
-  - Install from the official installer (e.g. `tesseract-ocr-w64-setup-*.exe`).
-  - Make sure Hindi and English language data (`hin`, `eng`) are installed.
-  - The code currently expects:
-    - `C:\Program Files\Tesseract-OCR\tesseract.exe`
-  - If your path is different, update:
-    - `pytesseract.pytesseract.tesseract_cmd` in `app.py` (and `extractor/pdf_reader.py` if you use it).
-- **Poppler for Windows**:
-  - Download a recent Poppler build for Windows.
-  - Extract it somewhere (you already have something like):
-    - `C:\Users\suman\Downloads\Release-25.12.0-0\poppler-25.12.0\Library\bin`
-  - Ensure `POPPLER_PATH` in `app.py` points to that `bin` directory.
+Under the hood it:
+- Converts PDF pages to images (Poppler)
+- Runs OCR (PaddleOCR recommended, Tesseract optional/legacy)
+- Parses each column independently and classifies questions as Hindi/English automatically
+- Keeps only the **stem + options (a)–(d)** and drops common noise (rough work, booklet codes, etc.)
 
 ---
 
-### 2. Install Python dependencies
+### Quick start (Windows / PowerShell)
 
-From the project root (`E:\TextExtractor`):
+1) Create venv + install dependencies:
 
-```bash
-# (Optional but recommended) create and activate a virtual environment
+PowerShell:
+
+```powershell
 python -m venv .venv
-.venv\Scripts\activate
-
-# Install required packages
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
-If you prefer installing directly instead of using `requirements.txt`:
+CMD:
+
+```bat
+python -m venv .venv
+.\.venv\Scripts\activate.bat
+pip install -r requirements.txt
+```
+
+2) Install **Poppler** and set `POPPLER_PATH` (required for PDF → images):
+
+```powershell
+# Example (change to your actual poppler "Library\bin" path)
+$env:POPPLER_PATH="C:\path\to\poppler\Library\bin"
+```
+
+3) (Recommended) Install **Tesseract** and set `TESSERACT_CMD` (used for legacy OCR and as a fallback):
+
+```powershell
+# Example (default install path)
+$env:TESSERACT_CMD="C:\Program Files\Tesseract-OCR\tesseract.exe"
+```
+
+4) Run the UI (recommended):
 
 ```bash
-pip install pdf2image pytesseract
+streamlit run streamlit_app.py
+```
+
+Then upload a PDF → click **Upload & Extract** → download both text files from the page.
+
+---
+
+### Prerequisites
+
+- **Python**: 3.10+ recommended (works with newer Python versions too, as long as dependencies install).
+- **Poppler (required)**: needed by `pdf2image` to convert PDFs to images.
+  - On Windows, download a Poppler build and locate the `Library\bin` directory.
+  - You can provide it at runtime via `POPPLER_PATH` (see above) or by editing the default in `app.py`.
+- **OCR engine**
+  - **PaddleOCR (recommended)**: best results on mixed Hindi+English scans.
+  - **Tesseract (optional/legacy)**: also supported; on Windows install the `.exe` and make sure language data `hin` + `eng` is present.
+
+---
+
+### Configuration (environment variables)
+
+These are already supported by the code, so new users don’t need to edit files:
+
+- **`POPPLER_PATH`**: path to Poppler `bin` directory (Windows: `...\Library\bin`)
+- **`TESSERACT_CMD`**: path to `tesseract.exe` (Windows default: `C:\Program Files\Tesseract-OCR\tesseract.exe`)
+- **`PDF_PATH`** (CLI only): path to the PDF to process. If not set, the CLI will auto-pick the first `.pdf` found in `uploads/`.
+
+Example (PowerShell):
+
+```powershell
+$env:POPPLER_PATH="C:\path\to\poppler\Library\bin"
+$env:TESSERACT_CMD="C:\Program Files\Tesseract-OCR\tesseract.exe"
+$env:PDF_PATH="E:\TextExtractor\uploads\my.pdf"
 ```
 
 ---
 
-### 3. Project structure (key files)
+### Run options
 
-- `app.py`  
-  Main entry point. Converts the uploaded PDF to images, runs OCR on both columns, parses questions, and saves the output.
+#### Option A: Streamlit UI (recommended)
 
-- `extractor/pdf_reader.py`  
-  Helper to OCR an entire PDF into text (not used in the current `app.py` flow, but available).
-
-- `extractor/question_parser.py`  
-  Contains the logic to:
-  - Detect Hindi vs English text.
-  - Split OCR output into question blocks.
-  - Merge statement‑style questions with their options.
-  - Trim each question to only include stem + options `(a)…(d)` and drop noise.
-
-- `utils/csv_writer.py`  
-  At the moment, only used to save **Hindi** questions to `output/hindi_questions.txt`.
-
-- `uploads/`  
-  Input folder. Place your scanned UPSC‑style PDF here, e.g. `uploads/2022 = PT = CSE.pdf`.
-
-- `output/`  
-  Auto‑created. Contains the extracted Hindi questions as text.
-
----
-
-### 4. Running the extractor
-
-1. Copy your target PDF into `uploads/` and make sure the filename in `app.py` matches, e.g.:
-
-```python
-PDF_PATH = "uploads/2022 = PT = CSE.pdf"
+```bash
+streamlit run streamlit_app.py
 ```
 
-2. From the project root, run:
+- **OCR engine**: choose **PaddleOCR (recommended)** for best accuracy.
+- **Poppler/Tesseract paths**: can be edited in the UI if needed.
+- Outputs are written to `output/` and also available as download buttons.
+
+#### Option B: CLI
+
+Put a PDF into `uploads/` (or set `PDF_PATH`), then run:
 
 ```bash
 python app.py
 ```
 
-3. On success you will see a message similar to:
+Outputs:
+- `output/hindi_questions.txt`
+- `output/english_questions.txt`
 
-```text
-✅ Extraction complete: 100 Hindi questions saved to 'output/hindi_questions.txt'.
-```
-
-4. Open `output/hindi_questions.txt` to see the results. Each question has the format:
+Format example:
 
 ```text
 --- Hindi Question 2 ---
@@ -110,38 +126,45 @@ python app.py
 (d) ...
 ```
 
-Only the question stem + options are kept; booklet codes, rough‑work footers and other noise are removed.
+---
+
+### Project structure (key files)
+
+- `streamlit_app.py`: Streamlit UI (upload → extract → preview/download)
+- `app.py`: core pipeline + CLI entry (PDF → images → OCR → parse → save)
+- `extractor/ai_ocr.py`: OCR backends (PaddleOCR + Tesseract)
+- `extractor/question_parser.py`: UPSC-style MCQ parsing + Hindi/English classification
+- `utils/csv_writer.py`: writes final text files into `output/`
+- `uploads/`: input PDFs (CLI will auto-pick the first PDF here if `PDF_PATH` not set)
+- `output/`: generated text files
 
 ---
 
-### 5. Common installation issues
+### Troubleshooting (common issues)
 
-- **`ModuleNotFoundError: No module named 'pdf2image'`**  
-  Run:
+- **PDF conversion fails (`pdf2image` / Poppler errors)**:
+  - Symptoms: `PDFInfoNotInstalledError`, “Unable to get page count”, or Poppler not found.
+  - Fix: set `POPPLER_PATH` to the Poppler `Library\bin` folder (see Quick start).
 
-  ```bash
-  pip install pdf2image
-  ```
+- **Tesseract not found / wrong path**:
+  - Symptoms: `TesseractNotFoundError` or OCR returns empty output when using Tesseract.
+  - Fix: set `TESSERACT_CMD` to the real `tesseract.exe` path.
 
-- **`ModuleNotFoundError: No module named 'pytesseract'`**  
-  Run:
+- **PaddleOCR install is slow / fails**:
+  - `paddlepaddle` can be large on Windows and may take time to install.
+  - If PaddleOCR isn’t available, the app will try to fall back to Tesseract automatically.
 
-  ```bash
-  pip install pytesseract
-  ```
+- **Permission error running `Activate.ps1`** (PowerShell):
+  - Run PowerShell as your normal user and execute:
 
-- **Tesseract not found / wrong path**  
-  - Verify Tesseract is installed.
-  - Confirm the path in `app.py` (and `extractor/pdf_reader.py` if used) is correct:
-
-    ```python
-    pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-    ```
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
 
 ---
 
-### 6. Notes and limitations
+### Notes and limitations
 
-- The input PDF is a **scan**, so the text quality depends on Tesseract OCR and the scan resolution; 100% character‑perfect extraction is not guaranteed.
-- The parser is tuned for **UPSC Prelims style MCQs** (statements + options a/b/c/d). Very different layouts may need additional parsing rules.
+- This tool is tuned for **UPSC Prelims-style MCQs** (stem + options (a)–(d), statement questions, mixed Hindi/English).
+- OCR quality depends heavily on scan quality (resolution, skew, blur). If results look poor, try higher DPI in the UI (e.g. 350–450).
 

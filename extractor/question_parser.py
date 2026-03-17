@@ -11,57 +11,85 @@ def parse_questions(text):
     """
     Parse raw OCR text into Hindi / English question blocks.
 
-    Special handling:
-    Some questions have numbered statements 1, 2, 3, 4 and then
-    options (a), (b), (c), (d) like "केवल 1 और 2". Because the OCR
-    text contains "1.", "2.", "3." inside the same question, a simple
-    split on (?=\\d+\\.) breaks the question into many small pieces.
-
-    To handle this, we:
-    1. Split on (?=\\d+\\.) as before.
-    2. Detect any block that contains options (a)/(b)/(c)/(d).
-    3. For each such options‑block, merge it together with a few
-       preceding blocks (the intro + numbered statements) into a
-       single question block.
-    4. Any remaining blocks become standalone questions.
+    New line-based strategy (more robust for UPSC-style MCQs):
+    - Walk line by line instead of splitting big blocks.
+    - Keep appending lines to the current question.
+    - Once we have seen options (a)–(d), the *next* line that
+      looks like a new question number (e.g. "4.") starts a
+      new question.
+    - This way, internal statement numbers "1.", "2.", "3."
+      inside a question do NOT split it.
     """
 
-    # 1) Split by any digit followed by a period (as before)
-    blocks = re.split(r'(?=\d+\.)', text)
+    lines = text.splitlines()
 
-    # Pre‑clean all blocks once
-    cleaned_blocks = [b.strip() for b in blocks]
+    def is_noise(line: str) -> bool:
+        s = line.strip()
+        if not s:
+            return False
+        return (
+            "VGYH-U-FGT" in s
+            or "ROUGH WORK" in s.upper()
+            or "SPACE FOR" in s.upper()
+        )
 
-    # Helper: detect if a block contains options like (a) .. (d)
-    def has_mcq_options(block: str) -> bool:
-        # Covers "(a)" or "(A)" etc., even if OCR drops spaces
-        return bool(re.search(r'\([a-dA-D]\)', block))
+    def line_has_option(line: str):
+        m = re.search(r'\(([a-dA-D])\)', line)
+        if m:
+            return m.group(1).lower()
+        return None
+
+    def looks_like_question_start(line: str) -> bool:
+        # line starting with digits + dot, e.g. "3." or "10."
+        return bool(re.match(r'^\s*\d+\.', line))
+
+    current_lines: list[str] = []
+    options_seen: set[str] = set()
+    questions: list[str] = []
+
+    for raw_line in lines:
+        if is_noise(raw_line):
+            continue
+
+        # Start a new question if:
+        # - we already have a question with options,
+        # - and this line looks like a new question number.
+        if (
+            current_lines
+            and options_seen
+            and looks_like_question_start(raw_line)
+        ):
+            block = "\n".join(current_lines).strip()
+            if len(block) > 30:
+                questions.append(block)
+            current_lines = []
+            options_seen = set()
+
+        current_lines.append(raw_line)
+        opt = line_has_option(raw_line)
+        if opt:
+            options_seen.add(opt)
+
+    # Flush last question
+    if current_lines and options_seen:
+        block = "\n".join(current_lines).strip()
+        if len(block) > 30:
+            questions.append(block)
 
     # Helper: trim a block so that it only contains the question stem
     # and options up to the line containing option (d). Anything after
     # (d) is typically page codes, English duplicates, etc., which we drop.
     def clean_mcq_block(block: str) -> str:
-        lines = block.splitlines()
+        lines_local = block.splitlines()
         cleaned_lines = []
         saw_option_a = False
         saw_option_d = False
 
-        for line in lines:
-            # Drop obvious footer / noise lines from the booklet
+        for line in lines_local:
             stripped = line.strip()
-            if not stripped:
-                # Skip leading empty lines; keep internal blanks once started
-                if not cleaned_lines:
-                    continue
-            if (
-                "VGYH-U-FGT" in stripped  # booklet code
-                or "ROUGH WORK" in stripped
-                or "SPACE FOR" in stripped
-            ):
+            if not stripped and not cleaned_lines:
                 continue
-
-            # Skip leading empty lines
-            if not cleaned_lines and not stripped:
+            if is_noise(line):
                 continue
 
             cleaned_lines.append(line)
@@ -72,82 +100,21 @@ def parse_questions(text):
                 saw_option_d = True
                 break
 
-        # If we never even saw option (a), return original block
         if not saw_option_a:
             return block.strip()
 
-        result = "\n".join(cleaned_lines).strip()
-        return result
+        return "\n".join(cleaned_lines).strip()
 
-    n = len(cleaned_blocks)
+    hindi_qs: list[str] = []
+    english_qs: list[str] = []
 
-    # 2) Build groups where an options‑block pulls a few previous blocks
-    assigned = [False] * n
-    groups = {}  # start_index -> list of indices belonging to that question
-
-    option_indices = [i for i, blk in enumerate(cleaned_blocks) if has_mcq_options(blk)]
-
-    for opt_idx in option_indices:
-        if assigned[opt_idx]:
+    for q in questions:
+        cleaned = clean_mcq_block(q)
+        if len(cleaned) < 30:
             continue
-
-        group = [opt_idx]
-
-        # Look backwards and pull in up to 4 preceding non‑trivial blocks.
-        # This typically captures: intro + 3 numbered statements.
-        j = opt_idx - 1
-        while j >= 0 and len(group) < 5:
-            if assigned[j]:
-                break
-
-            prev = cleaned_blocks[j]
-            if len(prev) < 30:  # skip tiny / noisy chunks
-                j -= 1
-                continue
-
-            # We expect these to be statement‑like blocks such as "1.", "2.", "3."
-            # or an intro paragraph. We include them unconditionally until the limit.
-            group.insert(0, j)
-            j -= 1
-
-        start = group[0]
-        for idx in group:
-            assigned[idx] = True
-        groups[start] = group
-
-    hindi_qs = []
-    english_qs = []
-
-    # 3) Walk through blocks in order and emit merged / standalone questions.
-    #    Only keep blocks that actually look like MCQs (have (a)/(b)/(c)/(d)).
-    i = 0
-    while i < n:
-        if i in groups:
-            # Merge all blocks in this group into one question
-            indices = groups[i]
-            merged = "\n".join(cleaned_blocks[idx] for idx in indices)
-            if len(merged) >= 30 and has_mcq_options(merged):
-                merged = clean_mcq_block(merged)
-                if is_hindi(merged):
-                    hindi_qs.append(merged)
-                else:
-                    english_qs.append(merged)
-            i = indices[-1] + 1
-            continue
-
-        if assigned[i]:
-            # This index was merged into a group whose start < i
-            i += 1
-            continue
-
-        block = cleaned_blocks[i]
-        if len(block) >= 30 and has_mcq_options(block):
-            block = clean_mcq_block(block)
-            if is_hindi(block):
-                hindi_qs.append(block)
-            else:
-                english_qs.append(block)
-
-        i += 1
+        if is_hindi(cleaned):
+            hindi_qs.append(cleaned)
+        else:
+            english_qs.append(cleaned)
 
     return hindi_qs, english_qs
