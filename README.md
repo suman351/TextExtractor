@@ -1,3 +1,9 @@
+---
+title: TextExtractor
+sdk: docker
+app_port: 7860
+---
+
 ## TextExtractor – UPSC PDF Hindi/English Question OCR
 
 Extract **Hindi + English UPSC-style MCQ questions** from a *scanned* PDF and save them as clean text files:
